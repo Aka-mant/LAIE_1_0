@@ -3,8 +3,8 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
 import math
+from dataclasses import asdict, dataclass
 from typing import Any
 
 
@@ -66,6 +66,16 @@ class ComputeEngine:
         self._torch = None
         self._torch_checked = False
         self.last_decision: ComputeDecision | None = None
+
+    @staticmethod
+    def bytes_to_mb_ceil(memory_bytes: int) -> int:
+        """Консервативно переводит байты в MiB с округлением вверх."""
+        if isinstance(memory_bytes, bool) or not isinstance(memory_bytes, int):
+            raise TypeError("memory_bytes должен быть целым числом")
+        if memory_bytes < 0:
+            raise ValueError("memory_bytes не может быть отрицательным")
+        mib = 1024 * 1024
+        return (memory_bytes + mib - 1) // mib
 
     def _load_torch(self):
         """Ленивая загрузка PyTorch без CUDA-инициализации при импорте."""
