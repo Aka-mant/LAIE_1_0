@@ -254,3 +254,135 @@ def test_cuda_failure_falls_back_to_cpu(monkeypatch):
     assert result == "cpu-result"
     assert engine.last_decision.device == "cpu"
     assert "Ошибка CUDA" in engine.last_decision.reason
+
+
+
+def test_dynamic_vram_reserve_uses_percentage_of_current_free_memory(monkeypatch):
+    engine = ComputeEngine(
+        memory_reserve_mb=0,
+        memory_reserve_ratio=0.30,
+    )
+    monkeypatch.setattr(
+        engine,
+        "inspect",
+        lambda: {
+            "cuda_available": True,
+            "gpu": {"free_memory_mb": 1_000},
+        },
+    )
+
+    fits_at_reserve_boundary = engine.explain_choice(
+        item_count=1_000_000,
+        estimated_memory_mb=700,
+    )
+    exceeds_reserve_boundary = engine.explain_choice(
+        item_count=1_000_000,
+        estimated_memory_mb=701,
+    )
+
+    assert fits_at_reserve_boundary.device == "cuda"
+    assert exceeds_reserve_boundary.device == "cpu"
+    assert "резерва (300 МБ)" in exceeds_reserve_boundary.reason
+
+
+def test_invalid_dynamic_vram_reserve_ratio_is_rejected():
+    with pytest.raises(ValueError):
+        ComputeEngine(memory_reserve_ratio=1.0)
+
+    with pytest.raises(ValueError):
+        ComputeEngine(memory_reserve_ratio=-0.1)
+
+    with pytest.raises(TypeError):
+        ComputeEngine(memory_reserve_ratio=True)
+
+
+def test_task_and_memory_sizes_require_integers():
+    engine = ComputeEngine()
+
+    with pytest.raises(TypeError):
+        engine.choose_device(True)
+
+    with pytest.raises(TypeError):
+        engine.choose_device(10.5)
+
+    with pytest.raises(TypeError):
+        engine.choose_device(10, estimated_memory_mb=1.5)
+
+
+def test_missing_gpu_memory_information_falls_back_to_cpu(monkeypatch):
+    engine = ComputeEngine()
+    monkeypatch.setattr(
+        engine,
+        "inspect",
+        lambda: {
+            "cuda_available": True,
+            "gpu": {"free_memory_mb": None},
+        },
+    )
+
+    decision = engine.explain_choice(1_000_000)
+
+    assert decision.device == "cpu"
+    assert "не удалось достоверно определить" in decision.reason.casefold()
+
+
+def test_tensor_matmul_rounds_memory_estimates_up(monkeypatch):
+    class FakeTensor:
+        ndim = 2
+        shape = (1, 1)
+        device = SimpleNamespace(type="cpu")
+
+        def numel(self):
+            return 1
+
+        def element_size(self):
+            return 1
+
+        def to(self, device):
+            return self
+
+        def __matmul__(self, other):
+            return "cpu-result"
+
+    engine = ComputeEngine()
+    monkeypatch.setattr(
+        engine,
+        "_load_torch",
+        lambda: SimpleNamespace(cuda=SimpleNamespace()),
+    )
+
+    captured = {}
+
+    def capture_decision(**kwargs):
+        captured.update(kwargs)
+        return SimpleNamespace(device="cpu")
+
+    monkeypatch.setattr(engine, "explain_choice", capture_decision)
+
+    result = engine.tensor_matmul(FakeTensor(), FakeTensor())
+
+    assert result == "cpu-result"
+    assert captured["estimated_memory_mb"] == 1
+    assert captured["workspace_memory_mb"] == 1
+
+
+
+@pytest.mark.parametrize(
+    ("memory_bytes", "expected_mib"),
+    [
+        (0, 0),
+        (1, 1),
+        (1024 * 1024, 1),
+        (1024 * 1024 + 1, 2),
+    ],
+)
+def test_bytes_to_mb_ceil_is_conservative(memory_bytes, expected_mib):
+    assert ComputeEngine.bytes_to_mb_ceil(memory_bytes) == expected_mib
+
+
+def test_bytes_to_mb_ceil_rejects_invalid_values():
+    with pytest.raises(TypeError):
+        ComputeEngine.bytes_to_mb_ceil(True)
+
+    with pytest.raises(ValueError):
+        ComputeEngine.bytes_to_mb_ceil(-1)

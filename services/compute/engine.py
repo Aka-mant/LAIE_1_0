@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import math
 from dataclasses import asdict, dataclass
 from typing import Any
 
@@ -44,17 +45,48 @@ class ComputeEngine:
         self,
         min_gpu_items: int = 100_000,
         memory_reserve_mb: int = 1_536,
+        memory_reserve_ratio: float = 0.30,
     ):
+        if isinstance(min_gpu_items, bool) or not isinstance(
+            min_gpu_items, int
+        ):
+            raise TypeError("min_gpu_items должен быть целым числом")
         if min_gpu_items < 1:
             raise ValueError("min_gpu_items должен быть положительным")
+        if isinstance(memory_reserve_mb, bool) or not isinstance(
+            memory_reserve_mb, int
+        ):
+            raise TypeError("memory_reserve_mb должен быть целым числом")
         if memory_reserve_mb < 0:
             raise ValueError("memory_reserve_mb не может быть отрицательным")
+        if isinstance(memory_reserve_ratio, bool) or not isinstance(
+            memory_reserve_ratio, (int, float)
+        ):
+            raise TypeError("memory_reserve_ratio должен быть числом")
+        if (
+            not math.isfinite(memory_reserve_ratio)
+            or not 0 <= memory_reserve_ratio < 1
+        ):
+            raise ValueError("memory_reserve_ratio должен находиться в диапазоне [0, 1)")
 
         self.min_gpu_items = min_gpu_items
         self.memory_reserve_mb = memory_reserve_mb
+        self.memory_reserve_ratio = float(memory_reserve_ratio)
         self._torch = None
         self._torch_checked = False
         self.last_decision: ComputeDecision | None = None
+
+    @staticmethod
+    def bytes_to_mb_ceil(memory_bytes: int) -> int:
+        """Консервативно переводит байты в MiB с округлением вверх."""
+        if isinstance(memory_bytes, bool) or not isinstance(
+            memory_bytes, int
+        ):
+            raise TypeError("memory_bytes должен быть целым числом")
+        if memory_bytes < 0:
+            raise ValueError("memory_bytes не может быть отрицательным")
+        mib = 1024 * 1024
+        return (memory_bytes + mib - 1) // mib
 
     def _load_torch(self):
         """Ленивая загрузка PyTorch без CUDA-инициализации при импорте."""
@@ -152,11 +184,17 @@ class ComputeEngine:
 
         Принудительный CUDA не отключает проверку доступной VRAM.
         """
-        if item_count < 0:
-            raise ValueError("Размер задачи не может быть отрицательным")
-        if estimated_memory_mb < 0 or workspace_memory_mb < 0:
-            raise ValueError("Оценка памяти не может быть отрицательной")
-        if force not in self.VALID_FORCE_MODES:
+        values = (
+            ("item_count", item_count),
+            ("estimated_memory_mb", estimated_memory_mb),
+            ("workspace_memory_mb", workspace_memory_mb),
+        )
+        for name, value in values:
+            if isinstance(value, bool) or not isinstance(value, int):
+                raise TypeError(f"{name} должен быть целым числом")
+            if value < 0:
+                raise ValueError(f"{name} не может быть отрицательным")
+        if not isinstance(force, str) or force not in self.VALID_FORCE_MODES:
             raise ValueError("force должен быть auto, cpu или cuda")
 
         required_memory = estimated_memory_mb + workspace_memory_mb
@@ -186,14 +224,37 @@ class ComputeEngine:
         gpu = state["gpu"]
         free_mb = gpu["free_memory_mb"]
 
-        usable_memory = max(0, free_mb - self.memory_reserve_mb)
+        if (
+            isinstance(free_mb, bool)
+            or not isinstance(free_mb, int)
+            or free_mb < 0
+        ):
+            decision = ComputeDecision(
+                "cpu",
+                (
+                    "Не удалось достоверно определить свободную VRAM. "
+                    "Используется CPU."
+                ),
+                required_memory,
+                None,
+            )
+            self.last_decision = decision
+            return decision
+
+        # Резервируем не менее заданного минимума и одновременно долю
+        # текущей свободной VRAM. Это адаптируется к занятости GPU.
+        dynamic_reserve_mb = math.ceil(
+            free_mb * self.memory_reserve_ratio
+        )
+        reserve_mb = max(self.memory_reserve_mb, dynamic_reserve_mb)
+        usable_memory = max(0, free_mb - reserve_mb)
 
         if required_memory > usable_memory:
             decision = ComputeDecision(
                 "cpu",
                 (
-                    "Недостаточно свободной VRAM с учётом резерва. "
-                    f"Требуется {required_memory} МБ, "
+                    "Недостаточно свободной VRAM с учётом резерва "
+                    f"({reserve_mb} МБ). Требуется {required_memory} МБ, "
                     f"доступно для задачи {usable_memory} МБ."
                 ),
                 required_memory,
@@ -217,7 +278,10 @@ class ComputeEngine:
             self.last_decision = decision
             return decision
         else:
-            reason = "Размер задачи достаточен, запас VRAM позволяет использовать CUDA."
+            reason = (
+                "Размер задачи достаточен, запас VRAM "
+                "позволяет использовать CUDA."
+            )
 
         decision = ComputeDecision(
             "cuda",
@@ -275,8 +339,9 @@ class ComputeEngine:
         )
 
         # Учитываем входы, выход и дополнительный рабочий буфер.
-        estimated_mb = (input_bytes + output_bytes) // (1024 * 1024)
-        workspace_mb = (output_bytes * 2) // (1024 * 1024)
+        estimated_mb = self.bytes_to_mb_ceil(input_bytes + output_bytes)
+        workspace_bytes = output_bytes * 2
+        workspace_mb = self.bytes_to_mb_ceil(workspace_bytes)
 
         decision = self.explain_choice(
             item_count=item_count,

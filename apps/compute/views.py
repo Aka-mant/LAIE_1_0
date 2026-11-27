@@ -11,5 +11,6 @@ def status(request):
     engine = ComputeEngine(
         min_gpu_items=settings.LAIE_COMPUTE_MIN_GPU_ITEMS,
         memory_reserve_mb=settings.LAIE_GPU_MEMORY_RESERVE_MB,
+        memory_reserve_ratio=settings.LAIE_GPU_MEMORY_RESERVE_RATIO,
     )
     return JsonResponse(engine.inspect())

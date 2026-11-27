@@ -522,9 +522,9 @@ class EndToEndBenchmarkRunner:
                 # дополнительный рабочий буфер.
                 matrix_bytes = size * size * 4
 
-                estimated_memory_mb = (
+                estimated_memory_mb = self.engine.bytes_to_mb_ceil(
                     matrix_bytes * 4
-                ) // (1024 * 1024)
+                )
 
                 decision = self.engine.explain_choice(
                     item_count=size * size * size,
