@@ -3,7 +3,7 @@
 ## Требования
 
 - Windows 10/11 x64.
-- Python 3.13 x64.
+- Python 3.14.x x64 (целевое окружение ТЗ: Python 3.14.3).
 - PostgreSQL 16+ установлен на этом же компьютере и слушает только loopback.
 - Для GPU-ускорения: совместимый NVIDIA-драйвер и CUDA-сборка PyTorch (необязательно).
 
@@ -13,13 +13,16 @@
 # Перейти в каталог проекта
 Set-Location C:\Projects\LAIE
 
-# Виртуальное окружение
-py -3.13 -m venv .venv
+# Виртуальное окружение на Python 3.14
+py -3.14 -m venv .venv
 .\.venv\Scripts\Activate.ps1
 
 # Если PowerShell блокирует активацию, разрешить только для текущего процесса
 Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 .\.venv\Scripts\Activate.ps1
+
+# Проверить фактическую версию интерпретатора
+python --version
 
 # Установить основное CPU-окружение
 python -m pip install --upgrade pip

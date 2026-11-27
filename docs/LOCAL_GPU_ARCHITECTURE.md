@@ -24,6 +24,21 @@
 Фактические модель, версия драйвера и доступная память должны подтверждаться
 локальным выводом `nvidia-smi`, а не предполагаться по спецификации.
 
+## Уже существующие компоненты
+
+В репозитории уже присутствуют следующие элементы вычислительного контура:
+
+- `services/compute/engine.py` — базовый CPU/CUDA selector и матричная операция с CPU fallback;
+- `services/compute/benchmark.py` — benchmark CPU/CUDA матричного умножения, прогрев, синхронизация CUDA и сравнение точности с float64;
+- `services/compute/end_to_end_benchmark.py` — сквозное измерение с учётом передачи CPU RAM → GPU VRAM → CPU RAM;
+- `services/compute/scheduler/` — адаптивная обработка матричных пакетов, decision/execution engines, анализ задач, оценка памяти, hardware monitor, PyTorch adapter и реестр типов задач;
+- `apps/compute/management/commands/benchmark_compute.py` и `benchmark_end_to_end.py` — локальные команды запуска бенчмарков;
+- `apps/compute/views.py` — диагностический endpoint `GET /api/v1/compute/status/`.
+
+Наличие этих модулей не доказывает, что все доменные задачи LAIE уже используют
+единый execution pipeline. Необходимо проверить контракты scheduler, конкурентность,
+bounded retries, OOM, CPU fallback и фактическую интеграцию каждого workload.
+
 ## Установка CUDA PyTorch
 
 Основной `requirements.txt` намеренно не устанавливает PyTorch: он содержит
@@ -36,6 +51,9 @@ CPU-совместимый набор зависимостей. CUDA-сборк�
 `GET /api/v1/compute/status/` сообщает наличие PyTorch, доступность CUDA,
 модель GPU и VRAM, если эти сведения доступны драйверу.
 
+Scheduler hardware monitor дополнительно собирает имя CPU, число логических ядер,
+общую и доступную RAM, имя CUDA-устройства и свободную/общую VRAM.
+
 ## Параметры
 
 - `LAIE_COMPUTE_MIN_GPU_ITEMS`: минимальный размер задачи для автоматического выбора GPU.
@@ -47,10 +65,15 @@ CPU-совместимый набор зависимостей. CUDA-сборк�
 
 ## Текущие ограничения
 
-- Реализован общий селектор CPU/CUDA и пример CUDA-операции с CPU fallback.
+- Benchmark-компоненты существуют, но основной benchmark матричного умножения
+  не включает transfer time в измеряемый интервал; для этого есть отдельный
+  end-to-end benchmark.
+- Scheduler содержит adaptive matrix service и memory guard, но его устойчивость
+  к конкурентным GPU-заданиям, отмене, повторным OOM и восстановлению требует отдельной проверки.
 - Не доказана интеграция GPU с каждым математическим/ML/optimization pipeline.
-- Телеметрия температуры и загрузки GPU пока не реализована.
-- Нельзя заявлять автоматическое распределение всех вычислительных задач до
-  интеграции и тестирования каждого конкретного backend.
+- В просмотренном HardwareSnapshot есть CPU/RAM и CUDA/VRAM; телеметрия
+  температуры и загрузки GPU не обнаружена.
+- Compute API предоставляет JSON-диагностику, но полноценная Compute Dashboard
+  с очередью, прогрессом, benchmark history и ошибками не подтверждена.
 - PyTorch/CUDA runtime проверяется на целевой машине; успешная установка пакета
   сама по себе не доказывает доступность GPU.

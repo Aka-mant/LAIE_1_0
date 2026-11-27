@@ -29,6 +29,10 @@
 ## GPU
 
 См. [docs/LOCAL_GPU_ARCHITECTURE.md](docs/LOCAL_GPU_ARCHITECTURE.md).
+
+## Соответствие ТЗ и план разработки
+
+См. [docs/TZ_COMPLIANCE_1_0_1.md](docs/TZ_COMPLIANCE_1_0_1.md) — матрица соответствия, ограничения аудита и последовательность внедрения.
 Диагностика: `http://127.0.0.1:8000/api/v1/compute/status/`.
 
 ## Статус
