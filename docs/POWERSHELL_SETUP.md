@@ -43,7 +43,7 @@ DB_PORT=5432
 LAIE_BUDGET_LIMIT=5000.00
 LAIE_COMPUTE_MIN_GPU_ITEMS=100000
 LAIE_GPU_MEMORY_RESERVE_MB=1536
-'@ | Set-Content -Encoding UTF8 .env
+'@ | Set-Content -Encoding ASCII .env
 
 notepad .env
 ```
