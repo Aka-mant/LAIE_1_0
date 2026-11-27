@@ -1,0 +1,14 @@
+Django==5.2.19
+djangorestframework==3.16.1
+psycopg[binary]==3.2.13
+python-dotenv==1.2.1
+numpy==2.3.5
+scipy==1.16.3
+pandas==2.3.3
+scikit-learn==1.8.0
+statsmodels==0.14.6
+deap==1.4.3
+pytest==9.0.2
+pytest-django==4.11.1
+pytest-cov==7.0.0
+ruff==0.14.10

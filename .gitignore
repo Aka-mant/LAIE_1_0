@@ -1,0 +1,25 @@
+.venv/
+.env
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+htmlcov/
+.ruff_cache/
+media/
+staticfiles/
+*.log
+# GPU / ML runtime artifacts
+*.pt
+*.pth
+*.onnx
+*.safetensors
+ml_artifacts/
+.idea/
+backups/
+*.bak
+*.backup
+*.old
+*.bak.*
+
+reports/benchmarks/
