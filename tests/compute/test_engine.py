@@ -364,3 +364,25 @@ def test_tensor_matmul_rounds_memory_estimates_up(monkeypatch):
     assert result == "cpu-result"
     assert captured["estimated_memory_mb"] == 1
     assert captured["workspace_memory_mb"] == 1
+
+
+
+@pytest.mark.parametrize(
+    ("memory_bytes", "expected_mib"),
+    [
+        (0, 0),
+        (1, 1),
+        (1024 * 1024, 1),
+        (1024 * 1024 + 1, 2),
+    ],
+)
+def test_bytes_to_mb_ceil_is_conservative(memory_bytes, expected_mib):
+    assert ComputeEngine.bytes_to_mb_ceil(memory_bytes) == expected_mib
+
+
+def test_bytes_to_mb_ceil_rejects_invalid_values():
+    with pytest.raises(TypeError):
+        ComputeEngine.bytes_to_mb_ceil(True)
+
+    with pytest.raises(ValueError):
+        ComputeEngine.bytes_to_mb_ceil(-1)
