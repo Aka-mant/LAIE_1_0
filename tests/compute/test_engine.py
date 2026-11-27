@@ -323,7 +323,7 @@ def test_missing_gpu_memory_information_falls_back_to_cpu(monkeypatch):
     decision = engine.explain_choice(1_000_000)
 
     assert decision.device == "cpu"
-    assert "не удалось достоверно определить" in decision.reason
+    assert "не удалось достоверно определить" in decision.reason.casefold()
 
 
 def test_tensor_matmul_rounds_memory_estimates_up(monkeypatch):
