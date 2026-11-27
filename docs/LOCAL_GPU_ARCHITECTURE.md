@@ -1,40 +1,56 @@
 # LAIE Local Autonomous Edition — GPU architecture
 
-## Mandatory architecture rules
+## Обязательные архитектурные ограничения
 
-- Django binds only to `127.0.0.1`; do not bind to `0.0.0.0` or a LAN address.
-- PostgreSQL, source data, experiment artifacts, model checkpoints and audit data remain local.
-- No cloud workers, cloud jobs, remote compute endpoints, external AI APIs or remote database access.
-- Internet access is not required at runtime after installation and local data acquisition.
-- Ticket purchase is always a separate manual user action.
+- Django запускается только на `127.0.0.1`; адреса LAN, `0.0.0.0` и внешние DNS-имена запрещены.
+- PostgreSQL, исходные данные, результаты экспериментов, модели и журналы хранятся локально.
+- PostgreSQL host ограничен `127.0.0.1`, `::1` или `localhost` проверкой при загрузке Django settings.
+- Нет Cloud Worker, Cloud Jobs, удалённых вычислительных endpoints, внешних AI API или удалённой БД.
+- Интернет не нужен для штатного выполнения после установки зависимостей и локальной загрузки истории.
+- Исторические результаты обновляются только по инициативе пользователя.
+- Покупка билетов остаётся ручной операцией.
 
-## NVIDIA compute
+## NVIDIA / CUDA
 
-`services.compute.engine.ComputeEngine` probes PyTorch lazily. If PyTorch/CUDA is
-missing or the driver cannot be queried, the application remains operational on CPU.
-For large tasks, the engine can select CUDA when the estimated workload crosses
-`LAIE_COMPUTE_MIN_GPU_ITEMS` and enough free VRAM remains after the configured reserve.
-If a CUDA tensor operation fails, the sample operation retries on CPU.
+`services.compute.engine.ComputeEngine` загружает PyTorch лениво. Если PyTorch/CUDA
+не установлены или драйвер недоступен, приложение остаётся работоспособным на CPU.
 
-The current hardware's exact GPU model and driver version must be checked before
-choosing a PyTorch CUDA wheel. Use the official Windows/Pip selector at:
-https://pytorch.org/get-started/locally/
-Select Windows, Pip, Python and a CUDA build offered by the selector. Do not install
-an arbitrary CUDA Toolkit version just because its number is newer. The PyTorch wheel
-contains the CUDA runtime components it needs; the NVIDIA display driver must still
-be compatible. NVIDIA's Windows CUDA guide describes supported drivers and GPUs:
-https://docs.nvidia.com/cuda/cuda-installation-guide-microsoft-windows/
+Для крупных задач движок выбирает CUDA при достижении
+`LAIE_COMPUTE_MIN_GPU_ITEMS` и наличии свободной VRAM сверх резерва
+`LAIE_GPU_MEMORY_RESERVE_MB`. При ошибке CUDA в демонстрационной операции
+матричного умножения выполняется повтор на CPU.
 
-## Runtime endpoint
+Текущая конфигурация целевой машины: NVIDIA GeForce RTX 3070, 8 GB VRAM.
+Фактические модель, версия драйвера и доступная память должны подтверждаться
+локальным выводом `nvidia-smi`, а не предполагаться по спецификации.
 
-`GET /api/v1/compute/status/` reports PyTorch presence, CUDA availability, GPU model,
-and VRAM information when the installed driver exposes it.
+## Установка CUDA PyTorch
 
-## Configuration
+Основной `requirements.txt` намеренно не устанавливает PyTorch: он содержит
+CPU-совместимый набор зависимостей. CUDA-сборка устанавливается отдельно по
+официальному селектору https://pytorch.org/get-started/locally/ после проверки
+версии NVIDIA-драйвера. Не фиксировать произвольную версию CUDA Toolkit.
 
-- `LAIE_COMPUTE_MIN_GPU_ITEMS`: workload threshold for automatic CUDA selection.
-- `LAIE_GPU_MEMORY_RESERVE_MB`: VRAM safety reserve.
+## Диагностика
 
-The thresholds are initial conservative defaults and must be tuned by local benchmark
-results. Small statistical jobs should remain on CPU because host/device transfers can
-cost more than the GPU computation itself.
+`GET /api/v1/compute/status/` сообщает наличие PyTorch, доступность CUDA,
+модель GPU и VRAM, если эти сведения доступны драйверу.
+
+## Параметры
+
+- `LAIE_COMPUTE_MIN_GPU_ITEMS`: минимальный размер задачи для автоматического выбора GPU.
+- `LAIE_GPU_MEMORY_RESERVE_MB`: резерв VRAM, который не отдаётся вычислительной задаче.
+
+Эти значения — стартовые эвристики, не измеренная модель производительности.
+Решение о выборе устройства не должно считаться доказательством ускорения:
+необходим локальный benchmark CPU/GPU на репрезентативных задачах LAIE.
+
+## Текущие ограничения
+
+- Реализован общий селектор CPU/CUDA и пример CUDA-операции с CPU fallback.
+- Не доказана интеграция GPU с каждым математическим/ML/optimization pipeline.
+- Телеметрия температуры и загрузки GPU пока не реализована.
+- Нельзя заявлять автоматическое распределение всех вычислительных задач до
+  интеграции и тестирования каждого конкретного backend.
+- PyTorch/CUDA runtime проверяется на целевой машине; успешная установка пакета
+  сама по себе не доказывает доступность GPU.
