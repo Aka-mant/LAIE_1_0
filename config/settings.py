@@ -1,13 +1,20 @@
 import os
 from pathlib import Path
+
 from dotenv import load_dotenv
+
+from config.local_only import parse_local_allowed_hosts, require_loopback_host
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(BASE_DIR / ".env")
 
 SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "unsafe-dev-key-change-before-deploy")
 DEBUG = os.getenv("DJANGO_DEBUG", "False").lower() == "true"
-ALLOWED_HOSTS = [v.strip() for v in os.getenv("DJANGO_ALLOWED_HOSTS", "127.0.0.1,localhost").split(",") if v.strip()]
+
+# Автономная установка не принимает запросы с LAN или внешних доменов.
+ALLOWED_HOSTS = parse_local_allowed_hosts(
+    os.getenv("DJANGO_ALLOWED_HOSTS", "127.0.0.1,localhost,::1")
+)
 
 INSTALLED_APPS = [
     "django.contrib.admin", "django.contrib.auth", "django.contrib.contenttypes",
@@ -37,12 +44,17 @@ TEMPLATES = [{
 WSGI_APPLICATION = "config.wsgi.application"
 ASGI_APPLICATION = "config.asgi.application"
 
+# PostgreSQL обязана работать на этом же компьютере.
+_db_host = require_loopback_host(
+    os.getenv("DB_HOST", "127.0.0.1"),
+    "DB_HOST",
+)
 DATABASES = {"default": {
     "ENGINE": "django.db.backends.postgresql",
     "NAME": os.getenv("DB_NAME", "laie"),
     "USER": os.getenv("DB_USER", "laie"),
-    "PASSWORD": os.getenv("DB_PASSWORD", "change-me"),
-    "HOST": os.getenv("DB_HOST", "127.0.0.1"),
+    "PASSWORD": os.getenv("DB_PASSWORD", ""),
+    "HOST": _db_host,
     "PORT": os.getenv("DB_PORT", "5432"),
     "CONN_MAX_AGE": 60,
 }}
@@ -65,4 +77,3 @@ REST_FRAMEWORK = {
 LAIE_BUDGET_LIMIT = os.getenv("LAIE_BUDGET_LIMIT", "5000.00")
 LAIE_COMPUTE_MIN_GPU_ITEMS = int(os.getenv("LAIE_COMPUTE_MIN_GPU_ITEMS", "100000"))
 LAIE_GPU_MEMORY_RESERVE_MB = int(os.getenv("LAIE_GPU_MEMORY_RESERVE_MB", "1536"))
-# Локальный контур: сервер запускается только на loopback-интерфейсе.
